@@ -1,0 +1,468 @@
+<?php
+
+/*
+  @author:    cNicoll
+  @name:	    SQL Database class
+  @date:      02/11/09
+
+  RELEASE NOTES:
+  ==========================================================================================
+	08-17-10_10-38 version 2.1.1
+	- Removed the output messages when debugging was enabled, they are now being shown within firePHPbug
+	- Added a new method to truncate a table
+	
+	07-19-10_09-50 version 2.1
+	- Added a sublclass "csv.class.php"
+	- This class is still in a work in progress however it exports an SQL statement as a CSV file
+	- Added magic methods to the main SQL class
+	- __destruct now closes any active connections if con is set true
+	
+	06-30-10_12-36 version 2.0
+	- Updated every function with Throwing exceptions
+	- Added an exception class
+	- Added a log file
+	
+	06-30-10_12-36 version 1.4
+	- updated the update function. There was a bug that would not allow for multiple WHERE statements.
+	
+	12-22-09_12|35 version 1.3
+	- added a new method to allow for a custom query
+	customQuery($q)
+	- fixed a bug when returning a result set, multiple arrays may have
+	been sent. Only one should be returned now.
+	
+	11-25-09_11|47 version 1.2
+	- cleaned up some allignment of the code
+	
+	07-21-09_14|53 version 1.1
+	- updated error messages
+
+  HEADER:
+  ==========================================================================================
+  public:
+  Database($db_host, $db_user, $db_pass, $db_name)
+  connect()
+  disconnect()
+  customQuery($q)
+  select($table, $rows='*', $where = null, $order = null, $limit = null)
+  insert($table,$values,$rows = null)
+  delete($table, $where = null)
+  update($table,$rows,$where)
+  getResult()
+  private:
+  $db_host
+  $db_user
+  $db_pass
+  $result
+  $con
+  $debug
+  tableExists($table)
+
+ */
+
+include_once('exception/SQL.exception.class.php');
+
+class Database {
+
+    // Set up instance variables
+    private $db_host = '';
+    private $db_user = '';
+    private $db_pass = '';
+    private $db_name = '';
+    private $result = array();
+    private $con = false; // Checks to see if the connection is active
+    private $debug = false;  // Set to true for debug messages.
+
+    /**
+     * constructor
+     * @param host name
+     * @param db user
+     * @param db password
+     * @param db name to connect to
+     */
+    public function __construct($db_host, $db_user, $db_pass, $db_name) {
+        $this->db_host = $db_host;
+        $this->db_user = $db_user;
+        $this->db_pass = $db_pass;
+        $this->db_name = $db_name;
+    }
+
+    public function __destruct() {
+        if ($this->debug) {
+            //echo '<pre>';
+            //print_r($this);
+            //echo '</pre>';
+			//FB::log($this, 'destruct');
+        }
+
+        // close the connection if it's active
+        if ($this->con) {
+            $this->disconnect();
+            echo "A CONNECTION IS OPEN THAT WAS CLOSED";
+        }
+    }
+
+    /**
+     * Connect to the Database. First checks if the user is connected - if they are
+     * select the database. If they are not return false
+     *
+     * @return boolean - return true if connected and database is found.
+     */
+    public function connect() {
+        // Check to see if the user is already connected. If its not...
+        if (!($this->con)) {
+            $myconn = @mysql_connect($this->db_host, $this->db_user, $this->db_pass);  // Connect to the database
+        }
+        // If the connection was already made...
+        if ($myconn) {
+            $seldb = @mysql_select_db($this->db_name, $myconn);  // Select a database to use
+            // If a database was connected...
+            if ($seldb) {
+                $this->con = true; // con has a connection
+            } else {
+                $this->con = false;
+                throw new SQLException('Could not select a database');
+            }
+        } else {
+            $this->con = false;
+            throw new SQLException('Could not make a connection');
+        }
+    }
+
+    /**
+     * Disconnect from the Database. Checks the connection variable to see if its true.
+     * If it is, it means there is a connection to the database.
+     *
+     * @return boolean - return true if connection true if there is no connection to the database
+     */
+    public function disconnect() {
+        if ($this->con) {
+            if (@mysql_close()) {
+                $this->con = false;
+                return true;  // Connection closed
+            } else {
+                return false;  // Connection still open
+            }
+        }
+    }
+
+    /*
+     * @param custom query to be entered
+     * @return bool if query ran or not.
+     */
+
+    public function customQuery($q) {
+        $query = @mysql_query($q);
+
+        if ($query) {
+            $this->numResults = mysql_num_rows($query);
+            /*
+             * The columns and data that are requested from the database.
+             * It then assigns it to the result variable. However, to make it easier
+             * for the end user, instead of auto-incrementing numeric keys, the names of the columns are used.
+             * In case more than one result is provided each row that is returned is stored with a
+             * two dimensional array, with the first key being numerical and auto-incrementing,
+             * and the second key being the name of the column. If only one result is returned, then a
+             * one dimensional array is created with the keys being the columns. If no results are turned then
+             * the result variable is set to null.
+             */
+            for ($i = 0; $i < $this->numResults; $i++) {
+                $r = mysql_fetch_array($query);  // put the query into an array
+                $key = array_keys($r);  // get the keys for the array
+                //
+                for ($x = 0; $x < count($key); $x++) {
+                    // check if the key has an int value. If it does...
+                    if (!(is_int($key[$x]))) {
+                        // check if the query has more then one row, if so...
+                        if (mysql_num_rows($query) > 1) {
+                            $this->result[$i][$key[$x]] = $r[$key[$x]];  //
+                        }
+                        // if the result has less then one...
+                        else if (mysql_num_rows($query) < 1) {
+                            $this->result = null;  // Nothing in table
+                        }
+                        // Only one result found
+                        else {
+                            $this->result[$key[$x]] = $r[$key[$x]];
+                        }
+                    }
+                }
+            }
+            // ========= SUCCESS ===========
+            if ($this->debug == true) {
+                //echo '<code class="debug">' . mysql_error() . '<br /><br />Query: ' . $q . '</code>';  //enable for debugging.
+				FB::log(mysql_error().$q, 'query:');
+            }
+        } else {
+            // ========= FAILED ===========
+            throw new SQLException('custom Q', $q);
+        }
+    }
+
+    /**
+     * Checks to see if a particular tables exists in the database.
+     *
+     * @param table - table name
+     */
+    private function tableExists($table) {
+        $q = 'SHOW TABLES FROM ' . $this->db_name . ' LIKE "' . $table . '"';
+        $tablesInDb = @mysql_query($q);  // search the database for the table name
+        // if a table was found...
+        if ($tablesInDb) {
+            // ensure there are not more then one row in the query
+            if (mysql_num_rows($tablesInDb) == 1) {
+                return true;  // Table was found
+            } else {
+                // ========= FAILED ===========
+                throw new SQLException('1: Table not found', $q);
+            }
+        } else {
+            throw new SQLException('2: Table not found', $q);
+        }
+    }
+
+    /**
+     * Querey the Database. Create a variable called $results that will hold the
+     * query result. Checks tje database to see if the required table already exists.
+     *
+     * @param $table - table name in use
+     * @param $rows - default *(all)
+     * @param $where - default null
+     * @param $order - default null
+     * @return true if table exists
+     */
+    public function select($table, $rows='*', $where = null, $order = null, $limit = null) {
+        $q = 'SELECT ' . $rows . ' FROM ' . $table;  // Create start of query
+        // if where does not equal null
+        if ($where != null) {
+            $q .= ' WHERE ' . $where;  // Add conditions if they have been defined
+        }
+        // if order does not equal null
+        if ($order != null) {
+            $q .= ' ORDER BY ' . $order;  // Add orderby if its been defined
+        }
+        // if limit does not equal null
+        if ($limit != null) {
+            $q .= ' LIMIT ' . $limit;  // Add orderby if its been defined
+        }
+
+        // check if the table exists, if it does...
+        $this->tableExists($table);
+
+        $query = @mysql_query($q);  // create a variable to hold the query for whenever its called
+        // If there is a query...
+        if ($query) {
+            $this->numResults = mysql_num_rows($query);
+            /*
+             * The columns and data that are requested from the database.
+             * It then assigns it to the result variable. However, to make it easier
+             * for the end user, instead of auto-incrementing numeric keys, the names of the columns are used.
+             * In case more than one result is provided each row that is returned is stored with a
+             * two dimensional array, with the first key being numerical and auto-incrementing,
+             * and the second key being the name of the column. If only one result is returned, then a
+             * one dimensional array is created with the keys being the columns. If no results are turned then
+             * the result variable is set to null.
+             */
+            for ($i = 0; $i < $this->numResults; $i++) {
+                $r = mysql_fetch_array($query);  // put the query into an array
+                $key = array_keys($r);  // get the keys for the array
+                //
+                for ($x = 0; $x < count($key); $x++) {
+                    // check if the key has an int value. If it does...
+                    if (!(is_int($key[$x]))) {
+                        // check if the query has more then one row, if so...
+                        if (mysql_num_rows($query) > 1) {
+                            $this->result[$i][$key[$x]] = $r[$key[$x]];  //
+                        }
+                        // if the result has less then one...
+                        else if (mysql_num_rows($query) < 1) {
+                            $this->result = null;  // Nothing in table
+                        }
+                        // Only one result found
+                        else {
+                            $this->result[$key[$x]] = $r[$key[$x]];
+                        }
+                    }
+                }
+            }
+            // ========= SUCCESS ===========
+            if ($this->debug == true) {
+                //echo '<code class="debug">' . mysql_error() . '<br /><br />Query: ' . $q . '</code>';  //enable for debugging.
+				FB::log(mysql_error().$q, 'query:');
+            }
+        } else {
+            // ========= FAILED ===========
+            throw new SQLException('Select query failed', $q);
+        }
+    }
+
+    /**
+     * Insert content into the Database
+     *
+     * @param $table - get the table name
+     * @param $values
+     * @param $rows - Default to null value
+     * @return boolean - true if the insert took place
+     */
+    public function insert($table, $values, $rows = null) {
+        $this->tableExists($table);
+        $q = 'INSERT INTO ' . $table;
+        if ($rows != null) {
+            $q .= ' (' . $rows . ')';
+        }
+
+        for ($i = 0; $i < count($values); $i++) {
+            if (is_string($values[$i])) {
+                $values[$i] = '"' . $values[$i] . '"';
+            }
+        }
+        $values = implode(',', $values);
+        $q .= ' VALUES (' . $values . ')';
+
+        $ins = @mysql_query($q);
+
+        if ($ins) {
+            // ========= SUCCESS ===========
+            if ($this->debug == true) {
+                //echo '<code class="debug">' . mysql_error() . '<br /><br />Query: ' . $q . '</code>';  //enable for debugging.
+            	FB::log(mysql_error().$q, 'query:');
+			}
+        } else {
+            // ========= FAILED ===========
+            throw new SQLException('Insert query failed', $q);
+        }
+    }
+
+    /**
+     * Delete from the Database. Delete either a table or row from the database.
+     *
+     * @param $table - get the table name
+     * @param $where - from where. Default null
+     * @return boolean -
+     */
+    public function delete($table, $where = null) {
+        // check if table exisits
+        $this->tableExists($table);
+        // Delete table if there is no where clause
+        if ($where == null) {
+            $q = 'DELETE ' . $table;  // Variable to delete table
+        } else {
+            $q = 'DELETE FROM ' . $table . ' WHERE ' . $where; // Variable to delete with where clause
+        }
+
+        $del = @mysql_query($q);  // Run the query
+        // check if delete query was a success
+        if ($del) {
+            // ========= SUCCESS ===========
+            if ($this->debug == true) {
+                //echo '<code class="debug">' . mysql_error() . '<br /><br />Query: ' . $q . '</code>';  //enable for debugging.
+            	FB::log(mysql_error().$q, 'query:');
+			}
+        } else {
+            // ========= FAILED ===========
+            throw new SQLException('Delete query failed', $q);
+        }
+    }
+
+    /*
+     * Updates the database with the values sent
+     * Required: table (the name of the table to be updated
+     *           rows (the rows/values in a key/value array
+     *           where (the row/condition in an array (row,condition) )
+     */
+
+    public function update($table, $rows, $where) {
+        $this->tableExists($table);
+
+        // Parse the where values
+        // even values (including 0) contain the where rows
+        // odd values contain the clauses for the row
+        for ($i = 0; $i < count($where); $i++) {
+            // clause
+            if ($i % 2 != 0) {
+                $clauseArr[] = $where[$i];
+            }
+            // where
+            else {
+                $whereArr[] = $where[$i];
+            }
+        }
+
+        $newWhere = array_combine($whereArr, $clauseArr);
+        unset($where);
+
+        $numOfItems = sizeof($newWhere);
+        $counter = 0;
+
+        foreach ($newWhere as $key => $value) {
+            $counter += 1;
+
+            // check if there is another array item, if there is add "AND"
+            if ($counter < $numOfItems) {
+                $where[] = $key . " = " . "'" . $value . "'" . " AND ";
+            }
+            // if not, don't change anything
+            else {
+                $where[] = $key . " = " . "'" . $value . "'";
+            }
+        }
+
+        $where = implode('', $where);
+
+        $q = 'UPDATE ' . $table . ' SET ';
+        $keys = array_keys($rows);
+        for ($i = 0; $i < count($rows); $i++) {
+            if (is_string($rows[$keys[$i]])) {
+                $q .= $keys[$i] . '="' . $rows[$keys[$i]] . '"';
+            } else {
+                $q .= $keys[$i] . '=' . $rows[$keys[$i]];
+            }
+
+            // Parse to add commas
+            if ($i != count($rows) - 1) {
+                $q .= ',';
+            }
+        }
+        $q .= ' WHERE ' . $where;
+
+        $query = @mysql_query($q);
+        if ($query) {
+            // ========= SUCCESS ===========
+            if ($this->debug == true) {
+                //echo '<code class="debug">' . mysql_error() . '<br /><br />Query: ' . $q . '</code>';  //enable for debugging.
+            	FB::log(mysql_error().$q, 'query:');
+			}
+        } else {
+            // ========= FAILED ===========
+            throw new SQLException('Problem with the update query', $q);
+        }
+    }
+
+	/**
+	* Empties a table completely. Removes all index counts.
+	* @param tableName
+	* 	- name of table to truncate
+	*/
+	public function truncateTable($tableName) {
+		$q = @mysql_query('TRUNCATE TABLE '.$tableName);
+		if ($q) {
+            // success console message
+			FB::log(mysql_error().$q, 'query:');
+        }
+		else {
+			throw new SQLException('Problem with the truncate query', $q);
+		}
+	}
+
+    /**
+     * Returns the result set
+     * @return restult set
+     */
+    public function getResult() {
+        $res = $this->result;
+        unset($this->result);
+        return $res;
+    }
+
+}
+?>

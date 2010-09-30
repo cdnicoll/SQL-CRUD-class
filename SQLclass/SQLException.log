@@ -1,0 +1,3 @@
+[2010-07-07 09:32:52] Code: 0  || Message: 1: Table not found || SQL error:  
+Query: SHOW TABLES FROM world LIKE "Cty"
+-------

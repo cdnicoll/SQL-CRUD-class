@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 25
+/svn/!svn/ver/4/trunk/lib
+END
+csv.class.php
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/svn/!svn/ver/6/trunk/lib/csv.class.php
+END
+SQL.exception.class.php
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/svn/!svn/ver/4/trunk/lib/SQL.exception.class.php
+END
+sql.class.php
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/svn/!svn/ver/6/trunk/lib/sql.class.php
+END
+model.class.php
+K 25
+svn:wc:ra_dav:version-url
+V 41
+/svn/!svn/ver/4/trunk/lib/model.class.php
+END

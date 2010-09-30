@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 25
+/svn/!svn/ver/4/trunk/sql
+END
+create.sql
+K 25
+svn:wc:ra_dav:version-url
+V 36
+/svn/!svn/ver/4/trunk/sql/create.sql
+END
+Insert.sql
+K 25
+svn:wc:ra_dav:version-url
+V 36
+/svn/!svn/ver/4/trunk/sql/Insert.sql
+END
+world.sql
+K 25
+svn:wc:ra_dav:version-url
+V 35
+/svn/!svn/ver/4/trunk/sql/world.sql
+END
